@@ -13,7 +13,7 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss(ignore_index=0)         # 忽略 占位符 索引为0.
     optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.99)
 
-    for epoch in range(50):
+    for epoch in range(1):
         for enc_inputs, dec_inputs, dec_outputs in loader:  # enc_inputs : [batch_size, src_len]
                                                             # dec_inputs : [batch_size, tgt_len]
                                                             # dec_outputs: [batch_size, tgt_len]
@@ -21,10 +21,10 @@ if __name__ == "__main__":
             enc_inputs, dec_inputs, dec_outputs = enc_inputs.cuda(), dec_inputs.cuda(), dec_outputs.cuda()
             outputs, enc_self_attns, dec_self_attns, dec_enc_attns = model(enc_inputs, dec_inputs)
                                                             # outputs: [batch_size * tgt_len, tgt_vocab_size]
-            loss = criterion(outputs, dec_outputs.view(-1))
+            loss = criterion(outputs, dec_outputs.view(-1)) # 计算损失
             print('Epoch:', '%04d' % (epoch + 1), 'loss =', '{:.6f}'.format(loss))
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            loss.backward()     # 反向传播，计算梯度
+            optimizer.step()     # 更新模型参数
     torch.save(model, 'model.pth')
     print("保存模型")

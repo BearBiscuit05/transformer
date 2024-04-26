@@ -8,9 +8,10 @@ d_k = d_v = 64  # K(=Q), V的维度
 n_layers = 6    # 有多少个encoder和decoder
 n_heads = 8     # Multi-Head Attention设置为8
 
-
+# 1. 加入字词的位置信息
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=5000):
+        # 位置位置编码信息
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
         pos_table = np.array([
@@ -21,24 +22,25 @@ class PositionalEncoding(nn.Module):
         self.pos_table = torch.FloatTensor(pos_table).cuda()        # enc_inputs: [seq_len, d_model]
 
     def forward(self, enc_inputs):                                  # enc_inputs: [batch_size, seq_len, d_model]
+        # 得到带有位置信息的字向量
         enc_inputs += self.pos_table[:enc_inputs.size(1), :]
         return self.dropout(enc_inputs.cuda())
 
-
+# Mask掉停用词/填充词
 def get_attn_pad_mask(seq_q, seq_k):                                # seq_q: [batch_size, seq_len] ,seq_k: [batch_size, seq_len]
     batch_size, len_q = seq_q.size()
     batch_size, len_k = seq_k.size()
     pad_attn_mask = seq_k.data.eq(0).unsqueeze(1)                   # 判断 输入那些含有P(=0),用1标记 ,[batch_size, 1, len_k]
     return pad_attn_mask.expand(batch_size, len_q, len_k)           # 扩展成多维度
 
-
+# decoder 输入 mask
 def get_attn_subsequence_mask(seq):                                 # seq: [batch_size, tgt_len]
     attn_shape = [seq.size(0), seq.size(1), seq.size(1)]
     subsequence_mask = np.triu(np.ones(attn_shape), k=1)            # 生成上三角矩阵,[batch_size, tgt_len, tgt_len]
     subsequence_mask = torch.from_numpy(subsequence_mask).byte()    # [batch_size, tgt_len, tgt_len]
     return subsequence_mask
 
-
+# 注意力机制分数计算
 class ScaledDotProductAttention(nn.Module):
     def __init__(self):
         super(ScaledDotProductAttention, self).__init__()
@@ -53,7 +55,13 @@ class ScaledDotProductAttention(nn.Module):
         context = torch.matmul(attn, V)                                 # [batch_size, n_heads, len_q, d_v]
         return context, attn
 
-
+# 2.多头注意力
+"""
+ai * Wq = qi 查询
+ai * Wk = ki 被查
+ai * Wv = vi 内容
+用每个字的q去和所有k比较,最后按比例获得所有v拼接的结果,组成q位置字的嵌入结果
+"""
 class MultiHeadAttention(nn.Module):
     def __init__(self):
         super(MultiHeadAttention, self).__init__()
@@ -80,7 +88,7 @@ class MultiHeadAttention(nn.Module):
         output = self.fc(context)                                                   # [batch_size, len_q, d_model]
         return nn.LayerNorm(d_model).cuda()(output + residual), attn
 
-
+# 3. 前馈神经网络
 class PoswiseFeedForwardNet(nn.Module):
     def __init__(self):
         super(PoswiseFeedForwardNet, self).__init__()
@@ -109,21 +117,7 @@ class EncoderLayer(nn.Module):
         enc_outputs = self.pos_ffn(enc_outputs)                     # enc_outputs: [batch_size, src_len, d_model]
         return enc_outputs, attn
 
-
-class EncoderLayer(nn.Module):
-    def __init__(self):
-        super(EncoderLayer, self).__init__()
-        self.enc_self_attn = MultiHeadAttention()       # 多头注意力机制
-        self.pos_ffn = PoswiseFeedForwardNet()          # 前馈神经网络
-
-    def forward(self, enc_inputs, enc_self_attn_mask):  # enc_inputs: [batch_size, src_len, d_model]
-        # 输入3个enc_inputs分别与W_q、W_k、W_v相乘得到Q、K、V             # enc_self_attn_mask: [batch_size, src_len, src_len]
-        enc_outputs, attn = self.enc_self_attn(enc_inputs, enc_inputs, enc_inputs,
-                                                                        # enc_outputs: [batch_size, src_len, d_model],
-                                               enc_self_attn_mask)      # attn: [batch_size, n_heads, src_len, src_len]
-        enc_outputs = self.pos_ffn(enc_outputs)                         # enc_outputs: [batch_size, src_len, d_model]
-        return enc_outputs, attn
-
+# 叠加多头与MLP
 class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
